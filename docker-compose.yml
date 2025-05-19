@@ -1,0 +1,10 @@
+services:
+  task-scheduler:
+    build:
+      context: ./task_scheduler
+      dockerfile: Dockerfile
+    container_name: task-scheduler
+    ports:
+      - "38080:8080"
+    volumes:
+      - ./logs/:/logs/
