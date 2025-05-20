@@ -19,27 +19,39 @@ const workers = [
 let makespanStart = null;
 let makespanEnd = null;
 let completedTasks = 0;
-const totalTasks = 500;
+const totalTasks = 1000;
 let currentIndex = 0;
 let totalCost = 0;
 
 const startTimes = [];
 const finishTimes = [];
 const executionTimes = [];
+const cpuUsages = []; 
+const waitingTimes = [];
 const executionTimeByWorker = {};
 
 let tasks = [];
 let psoMapping = [];
 
 try {
-  const data = fs.readFileSync(path.join(__dirname, 'tasks500.json'));
+  const data = fs.readFileSync(path.join(__dirname, 'tasks1000.json'));
   tasks = JSON.parse(data);
 } catch (err) {
   console.error('Gagal membaca tasks.json:', err.message);
   process.exit(1);
 }
 
+app.post('/cpu-usage-report', (req, res) => {
+  const { host, avgCpu } = req.body;
+  cpuUsages.push({ time: Date.now(), host, avgCpu });
+  res.json({ status: 'received' });
+});
+
 app.post('/schedule', async (req, res) => {
+    if (currentIndex === 0) {
+    cpuUsages.length = 0;
+  }
+
   if (psoMapping.length === 0) {
     psoMapping = runPsoAlgorithm(tasks.length, workers.length, tasks);
     console.log('📌 PSO Mapping:', psoMapping);
@@ -76,6 +88,7 @@ app.post('/schedule', async (req, res) => {
     startTimes.push(startTime);
     finishTimes.push(finishTime);
     executionTimes.push(execTime);
+    waitingTimes.push(startTime - makespanStart);
 
     if (!executionTimeByWorker[workerURL]) {
       executionTimeByWorker[workerURL] = 0;
@@ -101,14 +114,36 @@ app.post('/schedule', async (req, res) => {
       const Tmin = Math.min(...allExecs);
       const imbalanceDegree = (Tmax - Tmin) / Tavg;
 
+      // Hitung Resource Utilization
+      const grouped = {};
+      cpuUsages.forEach(entry => {
+        if (!grouped[entry.host]) grouped[entry.host] = [];
+        grouped[entry.host].push(entry.avgCpu);
+      });
+
+      let ruSum = 0;
+      let ruCount = 0;
+      for (const host in grouped) {
+        const hostAvg = grouped[host].reduce((a, b) => a + b, 0) / grouped[host].length;
+        ruSum += hostAvg;
+        ruCount++;
+      }
+
+      const resourceUtilization = ruCount > 0 ? ruSum / ruCount : 0;
+
+      const totalWaiting = waitingTimes.reduce((a, b) => a + b, 0);
+      const avgWaitingTime = totalWaiting / totalTasks;
+
       console.log(`✅ All tasks completed with PSO.`);
       console.log(`🕒 Makespan: ${makespanDurationSec.toFixed(2)} detik`);
+      console.log(`💲 Total Cost: $${totalCost.toFixed(2)}`);
       console.log(`📈 Throughput: ${throughput.toFixed(2)} tugas/detik`);
+      console.log(`⏱️ Avg Waiting Time: ${avgWaitingTime.toFixed(6)} ms`);
+      console.log(`💡 Resource Utilization: ${resourceUtilization.toFixed(4)}%`);
       console.log(`📊 Avg Start: ${avgStart.toFixed(2)} ms`);
       console.log(`📊 Avg Finish: ${avgFinish.toFixed(2)} ms`);
       console.log(`📊 Avg Exec Time: ${avgExec.toFixed(2)} ms`);
       console.log(`⚖️ Imbalance Degree: ${imbalanceDegree.toFixed(3)}`);
-      console.log(`💲 Total Cost: $${totalCost.toFixed(2)}`);
     }
 
     res.json({
@@ -135,11 +170,14 @@ app.post('/reset', (req, res) => {
   completedTasks = 0;
   makespanStart = null;
   makespanEnd = null;
-  psoMapping = [];
+  moicsMapping = [];
   startTimes.length = 0;
   finishTimes.length = 0;
   executionTimes.length = 0;
   totalCost = 0;
+  const cpuUsages = []; 
+  cpuUsages.length = 0;
+  waitingTimes.length = 0;
   for (let key in executionTimeByWorker) delete executionTimeByWorker[key];
 
   res.json({ status: 'reset done' });
