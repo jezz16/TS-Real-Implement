@@ -83,12 +83,15 @@ function mutate(individual, workerCount) {
   return { chromosome, fitnessValues: [Infinity, Infinity] };
 }
 
-function abandonWorst(population, pa, workerCount) {
+function abandonWorst(population, pa, workerCount, taskCount) {
   const abandonCount = Math.floor(pa * population.length);
-  const sorted = [...population].sort((a, b) => (a.fitnessValues[0] + a.fitnessValues[1]) - (b.fitnessValues[0] + b.fitnessValues[1]));
+  const sorted = [...population].sort((a, b) => (b.fitnessValues[0] + b.fitnessValues[1]) - (a.fitnessValues[0] + a.fitnessValues[1]));
+
   for (let i = 0; i < abandonCount; i++) {
-    const mutated = mutate(sorted[i], workerCount);
-    sorted[i] = mutated;
+    sorted[i] = createIndividual(taskCount, workerCount); // solusi acak baru
+  }
+  for (let i = 0; i < abandonCount; i++) {
+    sorted[i] = mutate(sorted[i], workerCount); // hasil mutasi
   }
   return sorted;
 }
@@ -114,7 +117,7 @@ function runMoicsAlgorithm(taskCount, workerCount, tasks, iterations = 50, popSi
     }
 
     // Abandon worst
-    population = abandonWorst(newPopulation, pa, workerCount);
+    population = abandonWorst(newPopulation, pa, workerCount, taskCount);
 
     // Re-evaluate
     population.forEach(ind => estimateFitness(ind, tasks));
